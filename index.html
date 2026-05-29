@@ -79,7 +79,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 .task-panel-header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
 .col-name{flex:1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase}
 .col-status{width:82px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;text-align:center}
-.task-list-body{flex:1;overflow-y:auto;position:relative;overflow-x:hidden}
+.task-list-body{flex:1;overflow:hidden;position:relative}
+/* shared vertical scrollbar — single scroller driving both panels */
+.shared-vscroll{position:absolute;right:0;top:var(--header-h);bottom:0;width:10px;overflow-y:scroll;z-index:60}
+.shared-vscroll::-webkit-scrollbar{width:10px}
+.shared-vscroll::-webkit-scrollbar-track{background:var(--surface)}
+.shared-vscroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+.shared-vscroll::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+.shared-vscroll-inner{width:1px}
 .task-list-body::-webkit-scrollbar{width:4px}
 .task-list-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
@@ -144,7 +151,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 .gantt-chart{flex:1;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column}
 .gantt-chart::-webkit-scrollbar{height:5px}
 .gantt-chart::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-.gantt-inner{min-width:100%;display:flex;flex-direction:column}
+.gantt-inner{min-width:100%;display:flex;flex-direction:column;height:100%}
 
 /* DATE HEADER */
 .gantt-dates-header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
@@ -161,6 +168,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 
 /* GANTT BODY */
 .gantt-body{flex:1;overflow-y:hidden;position:relative}
+.vp-inner{position:relative;width:100%}
 .gantt-body::-webkit-scrollbar{width:0}
 .gantt-row-folder,.gantt-row-task,.gantt-row-projhdr,.gantt-row-inline{position:absolute;left:0;right:0}
 .gantt-row-folder{height:var(--row-h);background:var(--surface);border-bottom:1px solid var(--border)}
@@ -613,12 +621,13 @@ function renderGantt(){
       <div class="gantt-chart" id="gantt-chart">
         <div class="gantt-inner" style="width:${totalW}px">
           ${buildDateHeaderHTML(days,totalW)}
-          <div class="gantt-body" id="gantt-body" style="min-height:${totalH}px">
+          <div class="gantt-body" id="gantt-body">
             ${todayLineHTML(start,totalDays,totalH)}
             ${rows.map((r,ri)=>renderGanttRow(r,ri,days,start,totalW)).join('')}
           </div>
         </div>
       </div>
+      <div class="shared-vscroll" id="shared-vscroll"><div class="shared-vscroll-inner" style="height:${totalH}px"></div></div>
       </div>
     </div>`;
   afterRender(start);
@@ -681,7 +690,7 @@ function renderOverview(){
       <div class="gantt-chart" id="gantt-chart">
         <div class="gantt-inner" style="width:${totalW}px">
           ${buildDateHeaderHTML(days,totalW)}
-          <div class="gantt-body" id="gantt-body" style="min-height:${rows.length*40}px">
+          <div class="gantt-body" id="gantt-body">
             ${todayLineHTML(start,totalDays,rows.length*40)}
             ${rows.map((r,ri)=>{
               if(r.type==='projhdr'){
@@ -698,6 +707,7 @@ function renderOverview(){
         </div>
       </div>
       </div>
+      <div class="shared-vscroll" id="shared-vscroll"><div class="shared-vscroll-inner" style="height:${rows.length*40}px"></div></div>
     </div>`;
   afterRender(start);
 }
@@ -800,30 +810,69 @@ function renderGanttRow(row,ri,days,start,totalW){
 //  AFTER RENDER
 // ═══════════════════════════════════════════════════
 function afterRender(start){
-  const lb=document.getElementById('task-list-body');
-  const gb=document.getElementById('gantt-body');
-  if(lb&&gb){
-    // task-list-body is the master scroller; gantt-body mirrors it (overflow-y:hidden)
-    lb.addEventListener('scroll',()=>{ gb.scrollTop=lb.scrollTop; });
-    // redirect wheel/touch on the gantt side to the master scroller
-    gb.addEventListener('wheel',(e)=>{
+  const vs   = document.getElementById('shared-vscroll');
+  const lb   = document.getElementById('task-list-body');
+  const gb   = document.getElementById('gantt-body');
+  const wrap = document.getElementById('gantt-wrapper');
+
+  if(vs && lb && gb && wrap){
+    // Both bodies are overflow:hidden viewports. Their scrollTop can't change.
+    // So we MOVE THE CONTENT with transform:translateY based on one shared scrollbar.
+    // Wrap each body's children in a single translatable inner layer (once).
+    function ensureInner(el){
+      let inner=el.querySelector(':scope > .vp-inner');
+      if(!inner){
+        inner=document.createElement('div');
+        inner.className='vp-inner';
+        inner.style.cssText='position:relative;will-change:transform';
+        // move all existing children into inner
+        while(el.firstChild) inner.appendChild(el.firstChild);
+        el.appendChild(inner);
+      }
+      return inner;
+    }
+    const lbInner=ensureInner(lb);
+    const gbInner=ensureInner(gb);
+
+    function applyScroll(){
+      const y=vs.scrollTop;
+      lbInner.style.transform='translateY('+(-y)+'px)';
+      gbInner.style.transform='translateY('+(-y)+'px)';
+    }
+
+    vs.addEventListener('scroll',applyScroll,{passive:true});
+
+    // Route ALL wheel events in the wrapper to the shared scroller
+    wrap.addEventListener('wheel',(e)=>{
       e.preventDefault();
-      lb.scrollTop+=e.deltaY;
+      vs.scrollTop+=e.deltaY;
+      applyScroll();
     },{passive:false});
-    // touch support
+
+    // Touch
     let _ty=0;
-    gb.addEventListener('touchstart',(e)=>{_ty=e.touches[0].clientY},{passive:true});
-    gb.addEventListener('touchmove',(e)=>{
+    wrap.addEventListener('touchstart',(e)=>{_ty=e.touches[0].clientY;},{passive:true});
+    wrap.addEventListener('touchmove',(e)=>{
       e.preventDefault();
-      lb.scrollTop-=(e.touches[0].clientY-_ty);
+      vs.scrollTop-=(e.touches[0].clientY-_ty);
       _ty=e.touches[0].clientY;
+      applyScroll();
     },{passive:false});
+
+    applyScroll();
   }
+
   setTimeout(()=>{
     const chart=document.getElementById('gantt-chart');
-    if(chart){const off=diffDays(start,today);chart.scrollLeft=Math.max(0,off*dayWidth-140)}
+    if(chart){const off=diffDays(start,today);chart.scrollLeft=Math.max(0,off*dayWidth-140);}
     const inp=document.getElementById('inline-input');
-    if(inp){inp.focus();inp.scrollIntoView({block:'nearest'})}
+    if(inp){
+      inp.focus();
+      if(vs){
+        const r=inp.getBoundingClientRect(), lb2=lb.getBoundingClientRect();
+        if(r.bottom>lb2.bottom){ vs.scrollTop+=(r.bottom-lb2.bottom+10); vs.dispatchEvent(new Event('scroll')); }
+      }
+    }
   },40);
 }
 
