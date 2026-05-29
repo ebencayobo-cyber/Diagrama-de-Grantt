@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GanttFlow — Gestor de Proyectos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d0f14;--surface:#161b25;--surface2:#1e2535;--surface3:#252e42;
+  --border:#2a3349;--accent:#4f8ef7;--accent2:#7c5af7;
+  --green:#3dd68c;--yellow:#f7c84f;--red:#f75a5a;
+  --text:#e8edf5;--text2:#8b97b0;--text3:#5a6480;
+  --pending:#f7c84f;--inprogress:#4f8ef7;--done:#3dd68c;
+  --row-h:40px;--header-h:56px;--sidebar-w:360px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+/* TOP BAR */
+.topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:100}
+.logo{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.5px;flex-shrink:0}
+.logo span{color:var(--accent2)}
+.topbar-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+.topbar-proj{font-size:13px;color:var(--text2);flex-shrink:0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-actions{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:7px;border:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3a7ae8}
+.btn-secondary{background:var(--surface3);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--border)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-ghost:hover{background:var(--surface2);color:var(--text)}
+.btn-success{background:#1a4a30;color:var(--green);border:1px solid #2a6b46}.btn-success:hover{background:#235c3c}
+.btn-warn{background:#3d2f05;color:var(--yellow);border:1px solid #6b5010}.btn-warn:hover{background:#4e3c07}
+.btn svg{width:13px;height:13px}
+
+/* LAYOUT */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sidebar-header{padding:12px 14px 8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);display:flex;align-items:center;justify-content:space-between}
+.sidebar-add{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;display:flex}
+.sidebar-add:hover{background:var(--surface3);color:var(--accent)}
+.sidebar-list{flex:1;overflow-y:auto;padding:4px 8px 12px}
+.overview-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);transition:all .12s;margin-bottom:4px;border:1px solid transparent}
+.overview-item:hover{background:var(--surface2);color:var(--text)}
+.overview-item.active{background:linear-gradient(135deg,rgba(79,142,247,.12),rgba(124,90,247,.12));color:var(--accent);border-color:rgba(79,142,247,.25)}
+.proj-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);transition:all .12s;position:relative}
+.proj-item:hover{background:var(--surface2);color:var(--text)}
+.proj-item.active{background:var(--surface3);color:var(--text)}
+.proj-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.proj-item .proj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-item .proj-actions{display:none;gap:2px}
+.proj-item:hover .proj-actions{display:flex}
+.sidebar-divider{height:1px;background:var(--border);margin:6px 8px}
+.icon-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:3px;border-radius:4px;display:flex}
+.icon-btn:hover{background:var(--border);color:var(--text)}
+
+/* CONTENT */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.content-header{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:var(--surface)}
+.content-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.content-subtitle{font-size:12px;color:var(--text2);margin-top:1px}
+.content-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+/* GANTT WRAPPER */
+.gantt-wrapper{flex:1;display:flex;overflow:hidden}
+
+/* TASK PANEL */
+.task-panel{width:var(--sidebar-w);flex-shrink:0;border-right:2px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.task-panel-header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.col-name{flex:1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase}
+.col-status{width:82px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;text-align:center}
+.task-list-body{flex:1;overflow-y:auto;position:relative}
+.task-list-body::-webkit-scrollbar{width:4px}
+.task-list-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* PROJ HEADER (overview) */
+.proj-header-row{display:flex;align-items:center;height:44px;padding:0 10px;border-bottom:1px solid var(--border);gap:6px}
+.proj-header-row .ph-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.proj-header-row .ph-name{font-size:13px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-header-row .ph-info{font-size:10px;color:var(--text3)}
+
+/* FOLDER ROW */
+.folder-row{display:flex;align-items:center;height:var(--row-h);padding:0 8px;background:var(--surface);border-bottom:1px solid var(--border);cursor:pointer;gap:5px}
+.folder-toggle{color:var(--text3);display:flex;transition:transform .2s;flex-shrink:0}
+.folder-row.collapsed .folder-toggle{transform:rotate(-90deg)}
+.folder-name-text{font-size:12px;font-weight:600;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-row .fa-btns{display:none;gap:2px;flex-shrink:0}
+.folder-row:hover .fa-btns{display:flex}
+
+/* TASK ROW */
+.task-row{display:flex;align-items:center;height:var(--row-h);border-bottom:1px solid rgba(42,51,73,.45);transition:background .1s;gap:5px;position:relative}
+.task-row:hover{background:var(--surface2)}
+.task-row[data-level="0"]{padding:0 8px 0 8px}
+.task-row[data-level="1"]{padding:0 8px 0 24px}
+.task-row[data-level="2"]{padding:0 8px 0 40px}
+.task-row[data-level="1"]::before{content:'';position:absolute;left:18px;top:0;bottom:0;width:2px;background:rgba(79,142,247,.2)}
+.task-row[data-level="2"]::before{content:'';position:absolute;left:34px;top:0;bottom:0;width:2px;background:rgba(124,90,247,.2)}
+/* drag ghost while reordering */
+.task-row.dragging-ghost{opacity:.35;background:var(--surface3)!important}
+/* drop indicator line */
+.drop-indicator{height:2px;background:var(--accent);position:relative;margin:0;pointer-events:none;z-index:20}
+.drop-indicator::before{content:'';position:absolute;left:0;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+
+/* drag handle */
+.drag-handle{display:flex;align-items:center;padding:0 4px;color:var(--text3);cursor:grab;flex-shrink:0;opacity:0;transition:opacity .1s}
+.task-row:hover .drag-handle{opacity:1}
+.drag-handle:active{cursor:grabbing}
+.drag-handle svg{pointer-events:none}
+
+.subtask-toggle{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;border-radius:3px;display:flex;flex-shrink:0;transition:transform .2s}
+.subtask-toggle.collapsed{transform:rotate(-90deg)}
+.subtask-toggle-placeholder{width:16px;flex-shrink:0}
+.task-name-text{flex:1;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
+.task-row[data-level="1"] .task-name-text{color:var(--text2)}
+.task-row[data-level="2"] .task-name-text{font-size:11px;color:var(--text3)}
+.task-row .ta-btns{display:none;gap:2px;flex-shrink:0}
+.task-row:hover .ta-btns{display:flex}
+
+/* INLINE CREATE ROW */
+.inline-create-row{display:flex;align-items:center;height:var(--row-h);border-bottom:1px solid rgba(42,51,73,.45);background:rgba(79,142,247,.05);padding:0 8px 0 30px;gap:8px}
+.inline-create-row[data-level="1"]{padding-left:46px}
+.inline-create-row[data-level="2"]{padding-left:62px}
+.inline-input{flex:1;background:transparent;border:none;border-bottom:1.5px solid var(--accent);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:2px 4px;outline:none}
+.inline-input::placeholder{color:var(--text3);font-size:12px}
+.inline-hint{font-size:10px;color:var(--text3);white-space:nowrap}
+
+/* STATUS BADGE */
+.status-badge{width:78px;display:inline-flex;align-items:center;justify-content:center;padding:2px 5px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.3px;white-space:nowrap;flex-shrink:0}
+.status-pending{background:rgba(247,200,79,.15);color:var(--pending)}
+.status-inprogress{background:rgba(79,142,247,.15);color:var(--inprogress)}
+.status-done{background:rgba(61,214,140,.15);color:var(--done)}
+
+/* GANTT CHART */
+.gantt-chart{flex:1;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column}
+.gantt-chart::-webkit-scrollbar{height:5px}
+.gantt-chart::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.gantt-inner{min-width:100%;display:flex;flex-direction:column}
+
+/* DATE HEADER */
+.gantt-dates-header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
+.date-month-row{position:absolute;top:0;left:0;right:0;height:22px;display:flex}
+.date-day-row{position:absolute;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center}
+.month-cell{font-size:10px;font-weight:700;color:var(--text2);letter-spacing:.8px;text-transform:uppercase;display:flex;align-items:center;padding-left:8px;border-left:1px solid var(--border);overflow:hidden;height:22px}
+.day-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid rgba(42,51,73,.5);flex-shrink:0;height:34px;cursor:crosshair}
+.day-cell .dn{font-size:11px;font-weight:600;color:var(--text3)}
+.day-cell .dw{font-size:9px;color:var(--text3);opacity:.7}
+.day-cell.today .dn{color:var(--accent)}
+.day-cell.weekend .dn{opacity:.4}
+
+/* GANTT BODY */
+.gantt-body{flex:1;overflow-y:auto;position:relative}
+.gantt-body::-webkit-scrollbar{width:0}
+.gantt-row-folder,.gantt-row-task,.gantt-row-projhdr,.gantt-row-inline{position:absolute;left:0;right:0}
+.gantt-row-folder{height:var(--row-h);background:var(--surface);border-bottom:1px solid var(--border)}
+.gantt-row-task{height:var(--row-h);border-bottom:1px solid rgba(42,51,73,.45);cursor:crosshair}
+.gantt-row-inline{height:var(--row-h);border-bottom:1px solid rgba(42,51,73,.45);background:rgba(79,142,247,.04)}
+.gantt-row-projhdr{height:44px;border-bottom:1px solid var(--border)}
+.gantt-grid-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(42,51,73,.4);pointer-events:none}
+.gantt-grid-line.weekend{background:rgba(42,51,73,.65)}
+.today-line{position:absolute;top:0;width:2px;background:var(--accent);opacity:.6;z-index:4;pointer-events:none}
+
+/* TASK BARS */
+.task-bar{position:absolute;top:7px;height:26px;border-radius:5px;display:flex;align-items:center;padding:0 0 0 7px;font-size:10px;font-weight:600;overflow:hidden;white-space:nowrap;z-index:3;min-width:8px;cursor:grab;transition:filter .1s}
+.task-bar:active{cursor:grabbing}
+.task-bar:hover{filter:brightness(1.18)}
+.task-bar.sub1{top:9px;height:22px;border-radius:4px;opacity:.88}
+.task-bar.sub2{top:11px;height:18px;border-radius:3px;opacity:.78}
+.task-bar.status-pending{background:rgba(247,200,79,.75);color:#1a1505}
+.task-bar.status-inprogress{background:rgba(79,142,247,.85);color:#fff}
+.task-bar.status-done{background:rgba(61,214,140,.85);color:#01200f}
+.bar-label{flex:1;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.bar-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.task-bar:hover .bar-handle{opacity:1}
+.bar-handle-left{left:0;border-radius:5px 0 0 5px}
+.bar-handle-right{right:0;border-radius:0 5px 5px 0}
+.bar-handle::after{content:'';width:2px;height:12px;background:currentColor;border-radius:1px;opacity:.6}
+
+/* DRAG TOOLTIP */
+.drag-tooltip{position:fixed;top:0;left:0;background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--text);pointer-events:none;z-index:9999;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);display:none}
+
+/* SCROLL SYNC */
+.scroll-sync{overflow-y:scroll}
+.scroll-sync::-webkit-scrollbar{width:6px}
+.scroll-sync::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px;width:460px;max-width:95vw;transform:translateY(16px);transition:transform .2s;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:18px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:5px;letter-spacing:.3px}
+.form-group input,.form-group select,.form-group textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);outline:none;transition:border-color .15s}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent)}
+.form-group select option{background:var(--surface2)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.color-picker-row{display:flex;gap:7px;flex-wrap:wrap}
+.color-dot{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s,border-color .1s}
+.color-dot:hover{transform:scale(1.18)}
+.color-dot.selected{border-color:#fff}
+.json-preview{width:100%;height:160px;font-family:'Space Mono',monospace;font-size:10px;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px;color:var(--text2);outline:none;resize:vertical}
+
+/* ZOOM */
+.zoom-bar{display:flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px 6px}
+.zoom-bar span{font-size:11px;color:var(--text2);min-width:28px;text-align:center}
+.zoom-btn{background:none;border:none;color:var(--text2);cursor:pointer;padding:2px;border-radius:4px;display:flex}
+.zoom-btn:hover{background:var(--border);color:var(--text)}
+
+/* MISC */
+.export-spinner{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface3);border:1px solid var(--border);border-radius:9px;padding:10px 16px;font-size:13px;z-index:9999;opacity:0;transform:translateY(12px);transition:all .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast.error{border-color:var(--red);color:var(--red)}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;color:var(--text3);padding:24px;text-align:center}
+.empty-state h3{font-size:15px;color:var(--text2)}
+.empty-state p{font-size:12px;max-width:240px}
+.no-project{flex:1;display:flex;align-items:center;justify-content:center}
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:var(--surface3);color:var(--text);font-size:10px;padding:3px 7px;border-radius:4px;white-space:nowrap;pointer-events:none;z-index:9999;border:1px solid var(--border)}
+
+/* HINT BAR */
+.hint-bar{height:24px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+.hint-item{font-size:10px;color:var(--text3)}
+.hint-key{background:var(--surface3);border:1px solid var(--border);border-radius:3px;padding:0 4px;font-family:'Space Mono',monospace;font-size:9px;color:var(--text2)}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">Gantt<span>Flow</span></div>
+  <div class="topbar-sep"></div>
+  <span class="topbar-proj" id="topbar-proj-name">Selecciona un proyecto</span>
+  <div class="topbar-actions">
+    <div class="zoom-bar">
+      <button class="zoom-btn" onclick="changeZoom(-4)" data-tip="Alejar"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M2 7h10" stroke-linecap="round"/></svg></button>
+      <span id="zoom-label">28px</span>
+      <button class="zoom-btn" onclick="changeZoom(4)" data-tip="Acercar"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M7 2v10M2 7h10" stroke-linecap="round"/></svg></button>
+    </div>
+    <button class="btn btn-ghost" onclick="exportPNG()" id="btn-export-png"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="2" y="2" width="12" height="10" rx="2"/><path d="M2 9l3-3 3 3 2-2 4 4"/></svg>PNG</button>
+    <button class="btn btn-ghost" onclick="exportPDF()" id="btn-export-pdf"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>PDF</button>
+    <button class="btn btn-warn" onclick="exportJSON()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M4 8h8M4 5h8M4 11h5"/><rect x="2" y="2" width="12" height="12" rx="2"/></svg>JSON</button>
+    <button class="btn btn-success" onclick="openImportModal()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke-linecap="round" stroke-linejoin="round"/></svg>Importar</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-header">Proyectos
+      <button class="sidebar-add" onclick="openModal('project')" data-tip="Nuevo proyecto"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M7 2v10M2 7h10" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="sidebar-list" id="proj-list"></div>
+  </div>
+  <div class="content" id="main-content">
+    <div class="no-project">
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" width="52" height="52"><rect x="6" y="10" width="52" height="44" rx="4"/><path d="M6 22h52M20 10v12M44 10v12M14 34h20M14 42h12"/></svg>
+        <h3>Bienvenido a GanttFlow</h3>
+        <p>Crea tu primer proyecto o importa un backup JSON</p>
+        <button class="btn btn-primary" onclick="openModal('project')">+ Nuevo Proyecto</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HINT BAR -->
+<div class="hint-bar">
+  <span class="hint-item"><span class="hint-key">⠿ arrastrar</span> reordenar · <span class="hint-key">click día vacío</span> asignar fecha · <span class="hint-key">⟷ bordes barra</span> duración · <span class="hint-key">doble click barra</span> editar · <span class="hint-key">Enter</span> crear inline</span>
+</div>
+
+<div class="drag-tooltip" id="drag-tooltip"></div>
+<div class="toast" id="toast"></div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-project">
+  <div class="modal">
+    <h2 id="modal-project-title">Nuevo Proyecto</h2>
+    <div class="form-group"><label>Nombre</label><input type="text" id="proj-name-input" placeholder="Mi proyecto..."/></div>
+    <div class="form-group"><label>Color</label><div class="color-picker-row" id="proj-color-picker"></div></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('project')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProject()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-folder">
+  <div class="modal">
+    <h2 id="modal-folder-title">Nueva Carpeta</h2>
+    <div class="form-group"><label>Nombre de la carpeta</label><input type="text" id="folder-name-input" placeholder="Fase 1..."/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('folder')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFolder()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-task">
+  <div class="modal">
+    <h2 id="modal-task-title">Editar Tarea</h2>
+    <div class="form-group"><label>Nombre</label><input type="text" id="task-name-input" placeholder="Nombre..."/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Fecha inicio</label><input type="date" id="task-start-input"/></div>
+      <div class="form-group"><label>Fecha fin</label><input type="date" id="task-end-input"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Hora inicio</label><input type="time" id="task-start-time-input" value="09:00"/></div>
+      <div class="form-group"><label>Hora fin</label><input type="time" id="task-end-time-input" value="18:00"/></div>
+    </div>
+    <div class="form-group"><label>Estado</label>
+      <select id="task-status-input">
+        <option value="pending">⏳ Pendiente</option>
+        <option value="inprogress">🔵 En Curso</option>
+        <option value="done">✅ Completado</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Carpeta</label><select id="task-folder-input"></select></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('task')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTask()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-import">
+  <div class="modal">
+    <h2>Importar desde JSON</h2>
+    <div class="form-group"><label>Pega el JSON o carga un archivo</label>
+      <textarea class="json-preview" id="import-json-input" placeholder='{"version":"2","projects":[...],"folders":[...],"tasks":[]}'></textarea>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <button class="btn btn-secondary" onclick="document.getElementById('import-file-input').click()">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" stroke-linecap="round"/></svg>Cargar .json
+      </button>
+      <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="loadJSONFile(event)"/>
+    </div>
+    <div style="padding:9px 12px;background:rgba(247,200,79,.07);border:1px solid rgba(247,200,79,.2);border-radius:7px;font-size:11px;color:var(--yellow)">
+      ⚠️ "Reemplazar todo" sobreescribe completamente el cronograma actual.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('import')">Cancelar</button>
+      <button class="btn btn-warn" onclick="importJSON(false)">Fusionar</button>
+      <button class="btn btn-primary" onclick="importJSON(true)">Reemplazar todo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  DATA & STATE
+// ═══════════════════════════════════════════════════
+let data = { projects:[], folders:[], tasks:[] };
+let activeProjectId = null;
+let isOverview      = false;
+let editingId       = null;
+let editingFolderId = null;
+let dayWidth        = 28;
+let collapsedFolders = new Set();
+let collapsedTasks   = new Set();
+
+// task order map: folderId → [taskId, taskId, …]  (level-0 order only)
+// sub-task order: parentId → [taskId, …]
+let taskOrder = {};   // key = folderId or parentId
+
+// Inline create
+let inlineCtx = null;  // { folderId, parentId, level }
+
+// Horizontal bar drag
+let barDrag = null;
+
+// Vertical reorder drag
+let vDrag = null;
+/*  vDrag = {
+      taskId, folderId, parentId, level,
+      ghostEl,         // floating clone
+      startY,
+      currentDropInfo  // { beforeTaskId | atEndOfFolderId | atEndOfParentId }
+    }
+*/
+
+let _rangeStart = null;
+
+const COLORS = ['#4f8ef7','#7c5af7','#f75a8e','#3dd68c','#f7c84f','#f75a5a','#4ff7e0','#f7944f'];
+let selectedColor = COLORS[0];
+const today = new Date(); today.setHours(0,0,0,0);
+const DAY_NAMES   = ['D','L','M','X','J','V','S'];
+const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// ── persist ──
+function loadData(){
+  try{
+    const s=localStorage.getItem('ganttflow_v2');
+    if(s){ data=JSON.parse(s); migrateData(); }
+  }catch(e){}
+}
+function saveData(){ localStorage.setItem('ganttflow_v2',JSON.stringify(data)) }
+
+function migrateData(){
+  // ensure all tasks have required fields — loose tasks (folderId=null) are fully valid
+  data.tasks=data.tasks.map(t=>({...t,level:t.level??0,parentId:t.parentId??null,folderId:t.folderId??null,order:t.order??0}));
+}
+
+// ── utils ──
+function uid(){return Math.random().toString(36).slice(2,10)}
+function parseDate(s){if(!s)return null;const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)}
+function fmtDate(d){if(!d)return'';return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function fmtDateShort(s){if(!s)return'—';const d=parseDate(s);return`${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`}
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r}
+function diffDays(a,b){return Math.round((b-a)/86400000)}
+function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type+' show';setTimeout(()=>t.className='toast',2600)}
+
+// ── ordered task lists ──
+function getOrderedChildren(key){
+  // key = folderId (for level-0) or parentId (for sub-tasks)
+  const allChildren = key.startsWith('p:')
+    ? data.tasks.filter(t=>t.parentId===key.slice(2))
+    : data.tasks.filter(t=>t.folderId===key&&!t.parentId&&t.level===0);
+  // sort by .order field
+  return allChildren.slice().sort((a,b)=>(a.order||0)-(b.order||0));
+}
+function reindexOrder(key){
+  const children = key.startsWith('p:')
+    ? data.tasks.filter(t=>t.parentId===key.slice(2))
+    : data.tasks.filter(t=>t.folderId===key&&!t.parentId&&t.level===0);
+  children.sort((a,b)=>(a.order||0)-(b.order||0));
+  children.forEach((t,i)=>t.order=i);
+}
+
+// ── date ranges ──
+function getDateRangeForProject(pid){
+  const tasks=data.tasks.filter(t=>t.projectId===pid&&t.startDate&&t.endDate);
+  if(!tasks.length)return{start:addDays(today,-5),end:addDays(today,60)};
+  let mn=parseDate(tasks[0].startDate),mx=parseDate(tasks[0].endDate);
+  tasks.forEach(t=>{const s=parseDate(t.startDate),e=parseDate(t.endDate);if(s<mn)mn=s;if(e>mx)mx=e});
+  return{start:addDays(mn,-7),end:addDays(mx,14)};
+}
+function getGlobalDateRange(){
+  const tasks=data.tasks.filter(t=>t.startDate&&t.endDate);
+  if(!tasks.length)return{start:addDays(today,-5),end:addDays(today,60)};
+  let mn=parseDate(tasks[0].startDate),mx=parseDate(tasks[0].endDate);
+  tasks.forEach(t=>{const s=parseDate(t.startDate),e=parseDate(t.endDate);if(s<mn)mn=s;if(e>mx)mx=e});
+  return{start:addDays(mn,-7),end:addDays(mx,14)};
+}
+
+// ═══════════════════════════════════════════════════
+//  ROW BUILDING
+// ═══════════════════════════════════════════════════
+function buildRows(projectId){
+  const folders=data.folders.filter(f=>f.projectId===projectId);
+  const rows=[];
+
+  function addTaskTree(parentId,level,folderId){
+    const children = level===0
+      ? data.tasks.filter(t=>t.projectId===projectId&&(t.folderId||null)===(folderId||null)&&!t.parentId&&t.level===0).sort((a,b)=>(a.order||0)-(b.order||0))
+      : data.tasks.filter(t=>t.parentId===parentId&&t.level===level).sort((a,b)=>(a.order||0)-(b.order||0));
+
+    children.forEach(t=>{
+      rows.push({type:'task',data:t});
+      if(!collapsedTasks.has(t.id)) addTaskTree(t.id,level+1,folderId);
+      if(inlineCtx&&inlineCtx.parentId===t.id)
+        rows.push({type:'inline',...inlineCtx});
+    });
+    if(level===0&&(inlineCtx&&(inlineCtx.folderId||null)===(folderId||null)&&!inlineCtx.parentId))
+      rows.push({type:'inline',...inlineCtx});
+  }
+
+  // 1. Folders and their tasks
+  folders.forEach(folder=>{
+    rows.push({type:'folder',data:folder});
+    if(!collapsedFolders.has(folder.id)) addTaskTree(null,0,folder.id);
+  });
+
+  // 2. Loose tasks (folderId===null) grouped under virtual "Sin carpeta" header
+  const looseTasks=data.tasks.filter(t=>t.projectId===projectId&&!t.folderId&&!t.parentId&&t.level===0);
+  const showLooseInline=inlineCtx&&!inlineCtx.folderId&&!inlineCtx.parentId;
+  if(looseTasks.length>0||showLooseInline){
+    const isC=collapsedFolders.has('__loose_'+projectId);
+    rows.push({type:'loose-header',projectId,collapsed:isC,count:looseTasks.length});
+    if(!isC) addTaskTree(null,0,null);
+  }
+  return rows;
+}
+
+function buildOverviewRows(){
+  const rows=[];
+  data.projects.forEach(proj=>{
+    rows.push({type:'projhdr',data:proj});
+    if(!collapsedFolders.has('proj_'+proj.id))
+      buildRows(proj.id).forEach(r=>rows.push({...r,projId:proj.id}));
+  });
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════
+//  SIDEBAR
+// ═══════════════════════════════════════════════════
+function renderSidebar(){
+  const list=document.getElementById('proj-list');
+  list.innerHTML=`
+    <div class="overview-item${isOverview?' active':''}" onclick="selectOverview()">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg>
+      Vista General
+    </div>
+    <div class="sidebar-divider"></div>`;
+  data.projects.forEach(p=>{
+    const el=document.createElement('div');
+    el.className='proj-item'+((!isOverview&&p.id===activeProjectId)?' active':'');
+    el.innerHTML=`<div class="dot" style="background:${p.color}"></div>
+      <span class="proj-name">${p.name}</span>
+      <div class="proj-actions">
+        <button class="icon-btn" onclick="event.stopPropagation();editProject('${p.id}')" data-tip="Editar"><svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M8.5 2.5l2 2-6 6H2.5v-2l6-6z"/></svg></button>
+        <button class="icon-btn" onclick="event.stopPropagation();deleteProject('${p.id}')" data-tip="Eliminar"><svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M2 3.5h9M4.5 3.5V2h4v1.5M5 6v3.5M8 6v3.5M2.5 3.5l.6 7h6.8l.6-7"/></svg></button>
+      </div>`;
+    el.onclick=()=>selectProject(p.id);
+    list.appendChild(el);
+  });
+}
+
+function selectProject(id){activeProjectId=id;isOverview=false;inlineCtx=null;renderSidebar();renderGantt()}
+function selectOverview(){isOverview=true;activeProjectId=null;inlineCtx=null;renderSidebar();renderOverview()}
+
+// ═══════════════════════════════════════════════════
+//  SHARED HTML BUILDERS
+// ═══════════════════════════════════════════════════
+function buildDateHeaderHTML(days,totalW){
+  const months=[];let cm=null,cs=0,cc=0;
+  days.forEach((d,i)=>{const mk=d.getFullYear()+'-'+d.getMonth();if(mk!==cm){if(cm!=null)months.push({label:cm,start:cs,count:cc});cm=mk;cs=i;cc=1}else cc++});
+  if(cm)months.push({label:cm,start:cs,count:cc});
+  return`<div class="gantt-dates-header" style="width:${totalW}px">
+    <div class="date-month-row">${months.map(m=>{const[y,mo]=m.label.split('-').map(Number);return`<div class="month-cell" style="width:${m.count*dayWidth}px">${MONTH_NAMES[mo]} ${y}</div>`}).join('')}</div>
+    <div class="date-day-row">${days.map(d=>{const isT=diffDays(today,d)===0;const isW=d.getDay()===0||d.getDay()===6;return`<div class="day-cell${isT?' today':''}${isW?' weekend':''}" style="width:${dayWidth}px"><span class="dn">${d.getDate()}</span><span class="dw">${DAY_NAMES[d.getDay()]}</span></div>`}).join('')}</div>
+  </div>`;
+}
+function buildGridLines(days){
+  return days.map((d,di)=>{const isW=d.getDay()===0||d.getDay()===6;return`<div class="gantt-grid-line${isW?' weekend':''}" style="left:${di*dayWidth}px"></div>`}).join('');
+}
+function todayLineHTML(start,totalDays,h){
+  const off=diffDays(start,today);
+  if(off<0||off>=totalDays)return'';
+  return`<div class="today-line" style="left:${off*dayWidth+dayWidth/2}px;height:${h}px"></div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER GANTT (single project)
+// ═══════════════════════════════════════════════════
+function renderGantt(){
+  if(!activeProjectId)return;
+  const proj=data.projects.find(p=>p.id===activeProjectId);
+  if(!proj)return;
+  document.getElementById('topbar-proj-name').textContent=proj.name;
+  const{start,end}=getDateRangeForProject(activeProjectId);
+  _rangeStart=start;
+  const totalDays=diffDays(start,end)+1;
+  const totalW=totalDays*dayWidth;
+  const rows=buildRows(activeProjectId);
+  const totalH=Math.max(rows.length*40,200);
+  const days=[];for(let i=0;i<totalDays;i++)days.push(addDays(start,i));
+  const SC={pending:'status-pending',inprogress:'status-inprogress',done:'status-done'};
+  const SL={pending:'Pendiente',inprogress:'En Curso',done:'Completado'};
+  const taskCount=data.tasks.filter(t=>t.projectId===activeProjectId).length;
+  const folderCount=data.folders.filter(f=>f.projectId===activeProjectId).length;
+
+  document.getElementById('main-content').innerHTML=`
+    <div class="content-header">
+      <div>
+        <div class="content-title"><span style="width:10px;height:10px;border-radius:50%;background:${proj.color};display:inline-block;flex-shrink:0"></span>${proj.name}</div>
+        <div class="content-subtitle">${folderCount} carpetas · ${taskCount} tareas</div>
+      </div>
+      <div class="content-actions">
+        <button class="btn btn-secondary" onclick="openModal('folder')">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12"><path d="M2 3.5a1 1 0 011-1h3l1.5 2H11a1 1 0 011 1v4a1 1 0 01-1 1H3a1 1 0 01-1-1v-6z"/></svg>+ Carpeta
+        </button>
+      </div>
+    </div>
+    <div class="gantt-wrapper" id="gantt-wrapper">
+      <div class="task-panel">
+        <div class="task-panel-header"><span class="col-name">NOMBRE</span><span class="col-status">ESTADO</span></div>
+        <div class="task-list-body scroll-sync" id="task-list-body">
+          ${rows.length===0
+            ?`<div class="empty-state" style="height:200px"><p>Crea una carpeta y añade tareas con el botón +</p></div>`
+            :rows.map(r=>renderListRow(r,proj,SC,SL)).join('')}
+        </div>
+      </div>
+      <div class="gantt-chart" id="gantt-chart">
+        <div class="gantt-inner" style="width:${totalW}px">
+          ${buildDateHeaderHTML(days,totalW)}
+          <div class="gantt-body scroll-sync" id="gantt-body" style="min-height:${totalH}px">
+            ${todayLineHTML(start,totalDays,totalH)}
+            ${rows.map((r,ri)=>renderGanttRow(r,ri,days,start,totalW)).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  afterRender(start);
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER OVERVIEW
+// ═══════════════════════════════════════════════════
+function renderOverview(){
+  document.getElementById('topbar-proj-name').textContent='Vista General';
+  const content=document.getElementById('main-content');
+  if(!data.projects.length){
+    content.innerHTML=`<div class="no-project"><div class="empty-state">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" width="52" height="52"><rect x="6" y="10" width="52" height="44" rx="4"/><path d="M6 22h52M20 10v12M44 10v12M14 34h20M14 42h12"/></svg>
+      <h3>Sin proyectos</h3><p>Crea un proyecto primero</p>
+      <button class="btn btn-primary" onclick="openModal('project')">+ Nuevo Proyecto</button>
+    </div></div>`;return;
+  }
+  const{start,end}=getGlobalDateRange();
+  _rangeStart=start;
+  const totalDays=diffDays(start,end)+1;
+  const totalW=totalDays*dayWidth;
+  const rows=buildOverviewRows();
+  const days=[];for(let i=0;i<totalDays;i++)days.push(addDays(start,i));
+  const SC={pending:'status-pending',inprogress:'status-inprogress',done:'status-done'};
+  const SL={pending:'Pendiente',inprogress:'En Curso',done:'Completado'};
+
+  content.innerHTML=`
+    <div class="content-header">
+      <div>
+        <div class="content-title"><svg viewBox="0 0 14 14" fill="none" stroke="var(--accent)" stroke-width="1.5" width="13" height="13"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg>Vista General</div>
+        <div class="content-subtitle">${data.projects.length} proyectos · ${data.tasks.length} tareas en total</div>
+      </div>
+      <div class="content-actions">${data.projects.map(p=>`<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid var(--border)" onclick="selectProject('${p.id}')"><span style="width:7px;height:7px;border-radius:50%;background:${p.color};display:inline-block"></span>${p.name}</span>`).join('')}</div>
+    </div>
+    <div class="gantt-wrapper" id="gantt-wrapper">
+      <div class="task-panel">
+        <div class="task-panel-header"><span class="col-name">NOMBRE</span><span class="col-status">ESTADO</span></div>
+        <div class="task-list-body scroll-sync" id="task-list-body">
+          ${rows.map(r=>{
+            if(r.type==='projhdr'){
+              const p=r.data;const isC=collapsedFolders.has('proj_'+p.id);const pc=data.tasks.filter(t=>t.projectId===p.id).length;
+              return`<div class="proj-header-row" style="background:${p.color}12;border-left:3px solid ${p.color}">
+                <span class="folder-toggle" style="cursor:pointer;color:var(--text3)" onclick="toggleProjInOverview('${p.id}')">${isC?'▶':'▼'}</span>
+                <span class="ph-dot" style="background:${p.color}"></span>
+                <span class="ph-name" style="color:${p.color}">${p.name}</span>
+                <span class="ph-info">${pc} tareas</span>
+                <button class="icon-btn" onclick="selectProject('${p.id}')" data-tip="Abrir proyecto" style="margin-left:4px"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V7M8 1h3v3M5 7l6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>`;
+            }
+            const proj=data.projects.find(p=>p.id===r.projId)||{color:'#4f8ef7'};
+            return renderListRow(r,proj,SC,SL);
+          }).join('')}
+        </div>
+      </div>
+      <div class="gantt-chart" id="gantt-chart">
+        <div class="gantt-inner" style="width:${totalW}px">
+          ${buildDateHeaderHTML(days,totalW)}
+          <div class="gantt-body scroll-sync" id="gantt-body" style="min-height:${rows.length*40}px">
+            ${todayLineHTML(start,totalDays,rows.length*40)}
+            ${rows.map((r,ri)=>{
+              if(r.type==='projhdr'){
+                const proj=r.data;const top=ri*40;
+                const pt=data.tasks.filter(t=>t.projectId===proj.id&&t.startDate&&t.endDate);
+                let band='';
+                if(pt.length){let mn=parseDate(pt[0].startDate),mx=parseDate(pt[0].endDate);pt.forEach(t=>{const s=parseDate(t.startDate),e=parseDate(t.endDate);if(s<mn)mn=s;if(e>mx)mx=e});const l=diffDays(start,mn)*dayWidth;const w=diffDays(mn,mx)*dayWidth+dayWidth;band=`<div style="position:absolute;top:10px;left:${l}px;width:${w}px;height:24px;border-radius:5px;background:${proj.color};opacity:.2;pointer-events:none"></div>`}
+                return`<div class="gantt-row-projhdr" style="top:${top}px;width:${totalW}px;background:${proj.color}08;border-left:3px solid ${proj.color}">${buildGridLines(days)}${band}</div>`;
+              }
+              const projCtx=data.projects.find(p=>p.id===r.projId)||{color:'#4f8ef7'};
+              return renderGanttRow(r,ri,days,start,totalW,projCtx.color);
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  afterRender(start);
+}
+
+// ═══════════════════════════════════════════════════
+//  ROW RENDERERS
+// ═══════════════════════════════════════════════════
+function renderListRow(row,proj,SC,SL){
+  if(row.type==='inline'){
+    const lvl=row.level||0;
+    return`<div class="inline-create-row" data-level="${lvl}" id="inline-row">
+      <span class="subtask-toggle-placeholder"></span>
+      <input class="inline-input" id="inline-input" type="text"
+        placeholder="Escribe el nombre y presiona Enter…"
+        onkeydown="handleInlineKey(event)"
+        onblur="handleInlineBlur(event)"/>
+      <span class="inline-hint">Enter ↵ · Esc ✕</span>
+    </div>`;
+  }
+  if(row.type==='loose-header'){
+    const isC=row.collapsed;const pid=row.projectId;
+    return`<div class="folder-row${isC?' collapsed':''}" onclick="toggleLoose('${pid}')" style="background:rgba(42,51,73,.35)">
+      <span class="folder-toggle"><svg viewBox="0 0 10 10" fill="currentColor" width="9" height="9"><path d="M2 3l3 4 3-4H2z"/></svg></span>
+      <svg viewBox="0 0 14 14" fill="none" stroke="var(--text3)" stroke-width="1.4" width="12" height="12"><path d="M2 4h10M2 7h10M2 10h6"/></svg>
+      <span class="folder-name-text" style="color:var(--text3)">Sin carpeta <span style="color:var(--text3);font-weight:400">(${row.count})</span></span>
+      <div class="fa-btns">
+        <button class="icon-btn" onclick="event.stopPropagation();startInline(null,null,0)" data-tip="Nueva tarea suelta"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M6 1v10M1 6h10" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>`;
+  }
+  if(row.type==='folder'){
+    const f=row.data;const isC=collapsedFolders.has(f.id);
+    const fc=data.tasks.filter(t=>t.folderId===f.id&&t.level===0).length;
+    return`<div class="folder-row${isC?' collapsed':''}" onclick="toggleFolder('${f.id}')">
+      <span class="folder-toggle"><svg viewBox="0 0 10 10" fill="currentColor" width="9" height="9"><path d="M2 3l3 4 3-4H2z"/></svg></span>
+      <svg viewBox="0 0 14 14" fill="none" stroke="${proj.color}" stroke-width="1.4" width="12" height="12"><path d="M2 3.5a1 1 0 011-1h3l1.5 2H11a1 1 0 011 1v4a1 1 0 01-1 1H3a1 1 0 01-1-1v-6z"/></svg>
+      <span class="folder-name-text">${f.name} <span style="color:var(--text3);font-weight:400">(${fc})</span></span>
+      <div class="fa-btns">
+        <button class="icon-btn" onclick="event.stopPropagation();editFolder('${f.id}')" data-tip="Renombrar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="10" height="10"><path d="M7.5 2l2.5 2.5-5.5 5.5H2V7.5L7.5 2z"/></svg></button>
+        <button class="icon-btn" onclick="event.stopPropagation();startInline('${f.id}',null,0)" data-tip="Nueva tarea"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M6 1v10M1 6h10" stroke-linecap="round"/></svg></button>
+        <button class="icon-btn" onclick="event.stopPropagation();deleteFolder('${f.id}')" data-tip="Eliminar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="10" height="10"><path d="M1.5 3h9M4 3V1.5h4V3M4.5 5v4M7.5 5v4M2 3l.6 7h6.8L10 3"/></svg></button>
+      </div>
+    </div>`;
+  }
+  // task
+  const t=row.data;const lvl=t.level||0;
+  const hasSubs=data.tasks.some(x=>x.parentId===t.id);
+  const isSubC=collapsedTasks.has(t.id);
+  const canAddSub=lvl<2;
+  const subCount=data.tasks.filter(x=>x.parentId===t.id).length;
+  const toggleBtn=hasSubs
+    ?`<button class="subtask-toggle${isSubC?' collapsed':''}" onclick="event.stopPropagation();toggleTask('${t.id}')" data-tip="${isSubC?'Expandir':'Colapsar'}"><svg viewBox="0 0 10 10" fill="currentColor" width="9" height="9"><path d="M2 3l3 4 3-4H2z"/></svg></button>`
+    :`<span class="subtask-toggle-placeholder"></span>`;
+  return`<div class="task-row" data-task-id="${t.id}" data-folder-id="${t.folderId||''}" data-parent-id="${t.parentId||''}" data-level="${lvl}">
+    <span class="drag-handle" onmousedown="vDragStart(event,'${t.id}')" data-tip="Reordenar">
+      <svg viewBox="0 0 8 14" fill="currentColor" width="8" height="14"><circle cx="2.5" cy="2.5" r="1.3"/><circle cx="5.5" cy="2.5" r="1.3"/><circle cx="2.5" cy="7" r="1.3"/><circle cx="5.5" cy="7" r="1.3"/><circle cx="2.5" cy="11.5" r="1.3"/><circle cx="5.5" cy="11.5" r="1.3"/></svg>
+    </span>
+    ${toggleBtn}
+    <span class="task-name-text" ondblclick="openEditModal('${t.id}')">${lvl>0?'↳ ':''}<span style="font-weight:${lvl===0?500:400}">${t.name}</span>${hasSubs?`<span style="font-size:9px;color:var(--text3);margin-left:3px">(${subCount})</span>`:''}</span>
+    <span class="status-badge ${SC[t.status]}">${SL[t.status]}</span>
+    <div class="ta-btns">
+      ${canAddSub?`<button class="icon-btn" onclick="event.stopPropagation();startInline('${t.folderId||''}','${t.id}',${lvl+1})" data-tip="Subtarea"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M6 1v10M1 6h10" stroke-linecap="round"/></svg></button>`:''}
+      <button class="icon-btn" onclick="event.stopPropagation();cycleStatus('${t.id}')" data-tip="Ciclar estado"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="10" height="10"><path d="M2 6a4 4 0 107.5-2M10 2l.5 2.5-2.5-.5" stroke-linecap="round"/></svg></button>
+      <button class="icon-btn" onclick="event.stopPropagation();deleteTask('${t.id}')" data-tip="Eliminar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="10" height="10"><path d="M1.5 3h9M4 3V1.5h4V3M4.5 5v4M7.5 5v4M2 3l.6 7h6.8L10 3"/></svg></button>
+    </div>
+  </div>`;
+}
+
+function renderGanttRow(row,ri,days,start,totalW){
+  const top=ri*40;
+  if(row.type==='inline')
+    return`<div class="gantt-row-inline" style="top:${top}px;width:${totalW}px">${buildGridLines(days)}</div>`;
+  if(row.type==='loose-header')
+    return`<div class="gantt-row-folder" style="top:${top}px;width:${totalW}px;background:rgba(42,51,73,.2)">${buildGridLines(days)}</div>`;
+  if(row.type==='folder')
+    return`<div class="gantt-row-folder" style="top:${top}px;width:${totalW}px">${buildGridLines(days)}</div>`;
+  const t=row.data;const lvl=t.level||0;
+  const sc={pending:'status-pending',inprogress:'status-inprogress',done:'status-done'}[t.status];
+  const barCls=lvl===1?'task-bar sub1':lvl===2?'task-bar sub2':'task-bar';
+  let barHtml='';
+  if(t.startDate&&t.endDate){
+    const ts=parseDate(t.startDate),te=parseDate(t.endDate);
+    const offS=diffDays(start,ts);const dur=diffDays(ts,te)+1;
+    const left=offS*dayWidth+2;const width=Math.max(dur*dayWidth-4,8);
+    barHtml=`<div class="${barCls} ${sc}" style="left:${left}px;width:${width}px"
+        data-bar-task="${t.id}"
+        onmousedown="barMouseDown(event,'${t.id}','move')"
+        ondblclick="openEditModal('${t.id}')">
+      <div class="bar-handle bar-handle-left" onmousedown="event.stopPropagation();barMouseDown(event,'${t.id}','resize-left')"></div>
+      <span class="bar-label">${width>55?t.name:''}</span>
+      <div class="bar-handle bar-handle-right" onmousedown="event.stopPropagation();barMouseDown(event,'${t.id}','resize-right')"></div>
+    </div>`;
+  }
+  return`<div class="gantt-row-task" style="top:${top}px;width:${totalW}px" onclick="ganttRowClick(event,'${t.id}')">
+    ${buildGridLines(days)}${barHtml}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  AFTER RENDER
+// ═══════════════════════════════════════════════════
+function afterRender(start){
+  const lb=document.getElementById('task-list-body');
+  const gb=document.getElementById('gantt-body');
+  if(lb&&gb){
+    let s=false;
+    lb.addEventListener('scroll',()=>{if(s)return;s=true;gb.scrollTop=lb.scrollTop;s=false});
+    gb.addEventListener('scroll',()=>{if(s)return;s=true;lb.scrollTop=gb.scrollTop;s=false});
+  }
+  setTimeout(()=>{
+    const chart=document.getElementById('gantt-chart');
+    if(chart){const off=diffDays(start,today);chart.scrollLeft=Math.max(0,off*dayWidth-140)}
+    const inp=document.getElementById('inline-input');
+    if(inp){inp.focus();inp.scrollIntoView({block:'nearest'})}
+  },40);
+}
+
+// ═══════════════════════════════════════════════════
+//  INLINE CREATE
+// ═══════════════════════════════════════════════════
+function startInline(folderId,parentId,level){
+  inlineCtx={folderId:folderId||null,parentId:parentId||null,level:level||0};
+  if(isOverview)renderOverview();else renderGantt();
+}
+function handleInlineKey(e){
+  if(e.key==='Enter'){
+    e.preventDefault();
+    const name=e.target.value.trim();
+    if(name) commitInline(name);
+    else inlineCtx=null;
+    if(isOverview)renderOverview();else renderGantt();
+  } else if(e.key==='Escape'){
+    inlineCtx=null;
+    if(isOverview)renderOverview();else renderGantt();
+  }
+}
+function handleInlineBlur(e){
+  setTimeout(()=>{
+    if(!document.getElementById('inline-row')) return;
+    const name=document.getElementById('inline-input')?.value.trim();
+    if(name) commitInline(name);
+    else inlineCtx=null;
+    if(isOverview)renderOverview();else renderGantt();
+  },120);
+}
+function commitInline(name){
+  const ctx=inlineCtx;if(!ctx)return;
+  const projId=activeProjectId||(ctx.parentId?data.tasks.find(t=>t.id===ctx.parentId)?.projectId:null);
+  if(!projId){inlineCtx=null;return}
+  let fid=ctx.folderId||null;
+  // for subtasks inherit parent's folderId
+  if(ctx.parentId&&!fid){const par=data.tasks.find(t=>t.id===ctx.parentId);if(par)fid=par.folderId||null}
+  // compute next order
+  const siblings = ctx.level===0
+    ? data.tasks.filter(t=>t.projectId===projId&&(t.folderId||null)===(fid||null)&&!t.parentId&&t.level===0)
+    : data.tasks.filter(t=>t.parentId===ctx.parentId);
+  const maxOrder = siblings.length ? Math.max(...siblings.map(t=>t.order||0)) : -1;
+  data.tasks.push({id:uid(),name,projectId:projId,folderId:fid,parentId:ctx.parentId||null,level:ctx.level||0,order:maxOrder+1,startDate:null,endDate:null,startTime:'09:00',endTime:'18:00',status:'pending'});
+  saveData();
+  // keep inline open in same context
+}
+
+// ═══════════════════════════════════════════════════
+//  CLICK ON EMPTY GANTT ROW → ASSIGN DATE
+// ═══════════════════════════════════════════════════
+function ganttRowClick(e,taskId){
+  if(barDrag&&barDrag._wasDragging)return;
+  const t=data.tasks.find(x=>x.id===taskId);
+  if(!t||t.startDate)return;
+  const chart=document.getElementById('gantt-chart');
+  if(!chart)return;
+  const body=document.getElementById('gantt-body');
+  const rect=body.getBoundingClientRect();
+  const x=e.clientX-rect.left+chart.scrollLeft;
+  const dayIdx=Math.floor(x/dayWidth);
+  const d=addDays(_rangeStart,dayIdx);
+  t.startDate=fmtDate(d);t.endDate=fmtDate(d);
+  saveData();if(isOverview)renderOverview();else renderGantt();
+}
+
+// ═══════════════════════════════════════════════════
+//  HORIZONTAL BAR DRAG (move / resize)
+// ═══════════════════════════════════════════════════
+function barMouseDown(e,taskId,type){
+  e.preventDefault();e.stopPropagation();
+  const t=data.tasks.find(x=>x.id===taskId);if(!t)return;
+  barDrag={type,taskId,startX:e.pageX,origStart:t.startDate,origEnd:t.endDate,_wasDragging:false};
+}
+document.addEventListener('mousemove',onBarDragMove);
+document.addEventListener('mouseup',onBarDragUp);
+
+function onBarDragMove(e){
+  if(!barDrag)return;
+  const dx=e.pageX-barDrag.startX;
+  if(Math.abs(dx)<3)return;
+  barDrag._wasDragging=true;
+  const dd=Math.round(dx/dayWidth);if(dd===0)return;
+  const t=data.tasks.find(x=>x.id===barDrag.taskId);if(!t)return;
+  let s=parseDate(barDrag.origStart),en=parseDate(barDrag.origEnd);if(!s||!en)return;
+  let ns=s,ne=en;
+  if(barDrag.type==='move'){ns=addDays(s,dd);ne=addDays(en,dd)}
+  else if(barDrag.type==='resize-left'){ns=addDays(s,dd);if(ns>=en)ns=addDays(en,-1)}
+  else{ne=addDays(en,dd);if(ne<=s)ne=addDays(s,1)}
+  // update bar DOM directly
+  const bar=document.querySelector(`[data-bar-task="${barDrag.taskId}"]`);
+  if(bar&&_rangeStart){
+    const offS=diffDays(_rangeStart,ns);const dur=diffDays(ns,ne)+1;
+    const left=offS*dayWidth+2;const width=Math.max(dur*dayWidth-4,8);
+    bar.style.left=left+'px';bar.style.width=width+'px';
+    const lbl=bar.querySelector('.bar-label');if(lbl)lbl.textContent=width>55?t.name:'';
+  }
+  // tooltip
+  const tip=document.getElementById('drag-tooltip');
+  tip.style.display='block';tip.style.left=(e.clientX+16)+'px';tip.style.top=(e.clientY-12)+'px';
+  tip.textContent=barDrag.type==='move'?`${fmtDateShort(fmtDate(ns))} → ${fmtDateShort(fmtDate(ne))}`:barDrag.type==='resize-left'?`Inicio: ${fmtDateShort(fmtDate(ns))}`:`Fin: ${fmtDateShort(fmtDate(ne))}`;
+}
+function onBarDragUp(e){
+  if(!barDrag)return;
+  document.getElementById('drag-tooltip').style.display='none';
+  if(barDrag._wasDragging){
+    const dd=Math.round((e.pageX-barDrag.startX)/dayWidth);
+    const t=data.tasks.find(x=>x.id===barDrag.taskId);
+    if(t&&dd!==0){
+      let s=parseDate(barDrag.origStart),en=parseDate(barDrag.origEnd);
+      if(s&&en){
+        if(barDrag.type==='move'){t.startDate=fmtDate(addDays(s,dd));t.endDate=fmtDate(addDays(en,dd))}
+        else if(barDrag.type==='resize-left'){const ns=addDays(s,dd);if(ns<en)t.startDate=fmtDate(ns)}
+        else{const ne=addDays(en,dd);if(ne>s)t.endDate=fmtDate(ne)}
+        saveData();if(isOverview)renderOverview();else renderGantt();
+      }
+    }
+  }
+  barDrag=null;
+}
+
+// ═══════════════════════════════════════════════════
+//  VERTICAL REORDER DRAG
+// ═══════════════════════════════════════════════════
+function vDragStart(e,taskId){
+  e.preventDefault();e.stopPropagation();
+  const t=data.tasks.find(x=>x.id===taskId);if(!t)return;
+  const rowEl=e.currentTarget.closest('.task-row');
+  if(!rowEl)return;
+
+  // create ghost
+  const rect=rowEl.getBoundingClientRect();
+  const ghost=document.createElement('div');
+  ghost.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;background:var(--surface3);border:1px solid var(--accent);border-radius:6px;opacity:.85;pointer-events:none;z-index:5000;display:flex;align-items:center;padding:0 12px;font-size:12px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.5)`;
+  ghost.textContent=t.name;
+  document.body.appendChild(ghost);
+
+  rowEl.classList.add('dragging-ghost');
+
+  vDrag={taskId,folderId:t.folderId,parentId:t.parentId,level:t.level||0,ghostEl:ghost,startY:e.clientY,rowEl};
+}
+
+document.addEventListener('mousemove',onVDragMove);
+document.addEventListener('mouseup',onVDragUp);
+
+function onVDragMove(e){
+  if(!vDrag)return;
+  const{ghostEl}=vDrag;
+  const rect=ghostEl.getBoundingClientRect();
+  ghostEl.style.top=(e.clientY-20)+'px';
+
+  // remove old indicator
+  document.querySelectorAll('.drop-indicator').forEach(el=>el.remove());
+
+  // find drop position: iterate task rows in same folder/parent
+  const lb=document.getElementById('task-list-body');
+  if(!lb)return;
+  const rows=[...lb.querySelectorAll('.task-row')].filter(r=>{
+    const lvl=parseInt(r.dataset.level||'0');
+    if(lvl!==vDrag.level)return false;
+    if(vDrag.level===0) return (r.dataset.folderId||null)===(vDrag.folderId||null);
+    return r.dataset.parentId===vDrag.parentId;
+  });
+
+  let insertBeforeEl=null;
+  for(const r of rows){
+    const rRect=r.getBoundingClientRect();
+    if(e.clientY<rRect.top+rRect.height/2){insertBeforeEl=r;break}
+  }
+
+  // show indicator
+  if(insertBeforeEl){
+    const ind=document.createElement('div');ind.className='drop-indicator';
+    insertBeforeEl.parentNode.insertBefore(ind,insertBeforeEl);
+    vDrag._insertBeforeTaskId=insertBeforeEl.dataset.taskId;
+    vDrag._insertAtEnd=false;
+  } else if(rows.length>0){
+    const last=rows[rows.length-1];
+    const ind=document.createElement('div');ind.className='drop-indicator';
+    last.parentNode.insertBefore(ind,last.nextSibling);
+    vDrag._insertBeforeTaskId=null;
+    vDrag._insertAtEnd=true;
+  }
+}
+
+function onVDragUp(e){
+  if(!vDrag)return;
+  const{ghostEl,rowEl,taskId,folderId,parentId,level}=vDrag;
+  ghostEl.remove();
+  if(rowEl)rowEl.classList.remove('dragging-ghost');
+  document.querySelectorAll('.drop-indicator').forEach(el=>el.remove());
+
+  // Apply reorder
+  const siblings = level===0
+    ? data.tasks.filter(t=>t.projectId===data.tasks.find(x=>x.id===taskId)?.projectId&&(t.folderId||null)===(folderId||null)&&!t.parentId&&t.level===0).sort((a,b)=>(a.order||0)-(b.order||0))
+    : data.tasks.filter(t=>t.parentId===parentId&&t.level===level).sort((a,b)=>(a.order||0)-(b.order||0));
+
+  const draggedIdx=siblings.findIndex(t=>t.id===taskId);
+  if(draggedIdx!==-1){
+    const [dragged]=siblings.splice(draggedIdx,1);
+    if(vDrag._insertBeforeTaskId){
+      const targetIdx=siblings.findIndex(t=>t.id===vDrag._insertBeforeTaskId);
+      if(targetIdx!==-1) siblings.splice(targetIdx,0,dragged);
+      else siblings.push(dragged);
+    } else {
+      siblings.push(dragged);
+    }
+    siblings.forEach((t,i)=>t.order=i);
+    saveData();
+  }
+
+  vDrag=null;
+  if(isOverview)renderOverview();else renderGantt();
+}
+
+// ═══════════════════════════════════════════════════
+//  TOGGLE
+// ═══════════════════════════════════════════════════
+function toggleFolder(id){collapsedFolders.has(id)?collapsedFolders.delete(id):collapsedFolders.add(id);if(isOverview)renderOverview();else renderGantt()}
+function toggleLoose(projectId){const k='__loose_'+projectId;collapsedFolders.has(k)?collapsedFolders.delete(k):collapsedFolders.add(k);if(isOverview)renderOverview();else renderGantt()}
+function toggleTask(id){collapsedTasks.has(id)?collapsedTasks.delete(id):collapsedTasks.add(id);if(isOverview)renderOverview();else renderGantt()}
+function toggleProjInOverview(pid){const k='proj_'+pid;collapsedFolders.has(k)?collapsedFolders.delete(k):collapsedFolders.add(k);renderOverview()}
+
+// ═══════════════════════════════════════════════════
+//  ZOOM
+// ═══════════════════════════════════════════════════
+function changeZoom(d){dayWidth=Math.max(12,Math.min(80,dayWidth+d));document.getElementById('zoom-label').textContent=dayWidth+'px';if(isOverview)renderOverview();else if(activeProjectId)renderGantt()}
+
+// ═══════════════════════════════════════════════════
+//  MODALS
+// ═══════════════════════════════════════════════════
+function openModal(type){
+  editingId=null;editingFolderId=null;
+  if(type==='project'){
+    document.getElementById('modal-project-title').textContent='Nuevo Proyecto';
+    document.getElementById('proj-name-input').value='';
+    selectedColor=COLORS[0];renderColorPicker();
+    document.getElementById('modal-project').classList.add('open');
+  } else if(type==='folder'){
+    editingFolderId=null;
+    document.getElementById('modal-folder-title').textContent='Nueva Carpeta';
+    document.getElementById('folder-name-input').value='';
+    document.getElementById('modal-folder').classList.add('open');
+  }
+}
+function closeModal(type){document.getElementById('modal-'+type).classList.remove('open');editingId=null;editingFolderId=null}
+function renderColorPicker(){document.getElementById('proj-color-picker').innerHTML=COLORS.map(c=>`<div class="color-dot${c===selectedColor?' selected':''}" style="background:${c}" onclick="selectColor('${c}')"></div>`).join('')}
+function selectColor(c){selectedColor=c;renderColorPicker()}
+['project','folder','task','import'].forEach(type=>{
+  document.getElementById('modal-'+type).addEventListener('click',function(e){if(e.target===this)closeModal(type)});
+});
+function openEditModal(taskId){
+  const t=data.tasks.find(x=>x.id===taskId);if(!t)return;
+  editingId=taskId;
+  const lvls=['Editar Tarea','Editar Subtarea','Editar Sub-subtarea'];
+  document.getElementById('modal-task-title').textContent=lvls[t.level||0]||'Editar Tarea';
+  document.getElementById('task-name-input').value=t.name;
+  document.getElementById('task-start-input').value=t.startDate||'';
+  document.getElementById('task-end-input').value=t.endDate||'';
+  document.getElementById('task-start-time-input').value=t.startTime||'09:00';
+  document.getElementById('task-end-time-input').value=t.endTime||'18:00';
+  document.getElementById('task-status-input').value=t.status||'pending';
+  const folderSel=document.getElementById('task-folder-input');
+  const folders=data.folders.filter(f=>f.projectId===t.projectId);
+  folderSel.innerHTML=`<option value=""${!t.folderId?' selected':''}>— Sin carpeta —</option>`+folders.map(f=>`<option value="${f.id}"${t.folderId===f.id?' selected':''}>${f.name}</option>`).join('');
+  document.getElementById('modal-task').classList.add('open');
+}
+
+// ═══════════════════════════════════════════════════
+//  CRUD: Projects
+// ═══════════════════════════════════════════════════
+function saveProject(){
+  const name=document.getElementById('proj-name-input').value.trim();if(!name){alert('Ingresa un nombre');return}
+  if(editingId){const p=data.projects.find(x=>x.id===editingId);if(p){p.name=name;p.color=selectedColor}}
+  else data.projects.push({id:uid(),name,color:selectedColor});
+  saveData();closeModal('project');renderSidebar();if(activeProjectId&&!isOverview)renderGantt();else if(isOverview)renderOverview();
+}
+function editProject(id){
+  const p=data.projects.find(x=>x.id===id);if(!p)return;
+  editingId=id;
+  document.getElementById('modal-project-title').textContent='Editar Proyecto';
+  document.getElementById('proj-name-input').value=p.name;
+  selectedColor=p.color;renderColorPicker();
+  document.getElementById('modal-project').classList.add('open');
+}
+function deleteProject(id){
+  if(!confirm('¿Eliminar este proyecto y todo su contenido?'))return;
+  data.projects=data.projects.filter(p=>p.id!==id);
+  data.folders=data.folders.filter(f=>f.projectId!==id);
+  data.tasks=data.tasks.filter(t=>t.projectId!==id);
+  if(activeProjectId===id){activeProjectId=null;isOverview=true}
+  saveData();renderSidebar();if(isOverview)renderOverview();else if(activeProjectId)renderGantt();
+}
+
+// ═══════════════════════════════════════════════════
+//  CRUD: Folders
+// ═══════════════════════════════════════════════════
+function saveFolder(){
+  const name=document.getElementById('folder-name-input').value.trim();if(!name){alert('Ingresa un nombre');return}
+  if(editingFolderId){
+    const f=data.folders.find(x=>x.id===editingFolderId);if(f)f.name=name;
+    saveData();closeModal('folder');showToast('Carpeta renombrada ✓');
+    if(isOverview)renderOverview();else renderGantt();
+  } else {
+    if(!activeProjectId){alert('Selecciona un proyecto primero');return}
+    data.folders.push({id:uid(),name,projectId:activeProjectId});
+    saveData();closeModal('folder');if(isOverview)renderOverview();else renderGantt();
+  }
+}
+function editFolder(id){
+  const f=data.folders.find(x=>x.id===id);if(!f)return;
+  editingFolderId=id;
+  document.getElementById('modal-folder-title').textContent='Renombrar Carpeta';
+  document.getElementById('folder-name-input').value=f.name;
+  document.getElementById('modal-folder').classList.add('open');
+}
+function deleteFolder(id){
+  if(!confirm('¿Eliminar esta carpeta y todas sus tareas?'))return;
+  const fIds=data.tasks.filter(t=>t.folderId===id).map(t=>t.id);
+  data.tasks=data.tasks.filter(t=>t.folderId!==id&&!fIds.includes(t.parentId));
+  data.folders=data.folders.filter(f=>f.id!==id);
+  saveData();if(isOverview)renderOverview();else renderGantt();
+}
+
+// ═══════════════════════════════════════════════════
+//  CRUD: Tasks
+// ═══════════════════════════════════════════════════
+function saveTask(){
+  if(!editingId)return;
+  const name=document.getElementById('task-name-input').value.trim();if(!name){alert('Ingresa un nombre');return}
+  const startDate=document.getElementById('task-start-input').value;
+  const endDate=document.getElementById('task-end-input').value;
+  const startTime=document.getElementById('task-start-time-input').value;
+  const endTime=document.getElementById('task-end-time-input').value;
+  const status=document.getElementById('task-status-input').value;
+  const folderId=document.getElementById('task-folder-input').value||null;
+  if(startDate&&endDate&&endDate<startDate){alert('La fecha fin debe ser ≥ inicio');return}
+  const t=data.tasks.find(x=>x.id===editingId);
+  if(t)Object.assign(t,{name,startDate,endDate,startTime,endTime,status,folderId});
+  saveData();closeModal('task');if(isOverview)renderOverview();else renderGantt();
+}
+function deleteTask(id){
+  if(!confirm('¿Eliminar tarea y sus subtareas?'))return;
+  function collectIds(pid){const ch=data.tasks.filter(t=>t.parentId===pid).map(t=>t.id);return[pid,...ch,...ch.flatMap(c=>collectIds(c))]}
+  data.tasks=data.tasks.filter(t=>!collectIds(id).includes(t.id));
+  saveData();if(isOverview)renderOverview();else renderGantt();
+}
+function cycleStatus(id){
+  const t=data.tasks.find(x=>x.id===id);if(!t)return;
+  t.status={pending:'inprogress',inprogress:'done',done:'pending'}[t.status]||'pending';
+  saveData();if(isOverview)renderOverview();else renderGantt();
+}
+
+// ═══════════════════════════════════════════════════
+//  EXPORT / IMPORT
+// ═══════════════════════════════════════════════════
+async function exportPNG(){
+  const w=document.getElementById('gantt-wrapper');if(!w){alert('Abre un proyecto primero');return}
+  const btn=document.getElementById('btn-export-png');btn.innerHTML='<span class="export-spinner"></span>PNG';btn.disabled=true;
+  try{const c=await html2canvas(w,{backgroundColor:'#0d0f14',scale:2,logging:false});const l=document.createElement('a');l.download='gantt.png';l.href=c.toDataURL('image/png');l.click();showToast('PNG exportado ✓')}catch(e){showToast('Error: '+e.message,'error')}
+  btn.innerHTML=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="2" y="2" width="12" height="10" rx="2"/><path d="M2 9l3-3 3 3 2-2 4 4"/></svg>PNG`;btn.disabled=false;
+}
+async function exportPDF(){
+  const w=document.getElementById('gantt-wrapper');if(!w){alert('Abre un proyecto primero');return}
+  const btn=document.getElementById('btn-export-pdf');btn.innerHTML='<span class="export-spinner"></span>PDF';btn.disabled=true;
+  try{const c=await html2canvas(w,{backgroundColor:'#0d0f14',scale:2,logging:false});const{jsPDF}=window.jspdf;const pdfW=297;const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});pdf.addImage(c.toDataURL('image/png'),'PNG',0,0,pdfW,pdfW*(c.height/c.width));pdf.save('gantt.pdf');showToast('PDF exportado ✓')}catch(e){showToast('Error: '+e.message,'error')}
+  btn.innerHTML=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>PDF`;btn.disabled=false;
+}
+function exportJSON(){
+  const blob=new Blob([JSON.stringify({version:'2',exportedAt:new Date().toISOString(),projects:data.projects,folders:data.folders,tasks:data.tasks},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const l=document.createElement('a');l.download=`ganttflow-backup-${new Date().toISOString().slice(0,10)}.json`;l.href=url;l.click();URL.revokeObjectURL(url);showToast('JSON exportado ✓');
+}
+function openImportModal(){document.getElementById('import-json-input').value='';document.getElementById('modal-import').classList.add('open')}
+function loadJSONFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>document.getElementById('import-json-input').value=ev.target.result;r.readAsText(f);e.target.value=''}
+function importJSON(replace){
+  const raw=document.getElementById('import-json-input').value.trim();if(!raw){showToast('Pega o carga un JSON','error');return}
+  let p;try{p=JSON.parse(raw)}catch(e){showToast('JSON inválido: '+e.message,'error');return}
+  const iP=p.projects||[],iF=p.folders||[],iT=p.tasks||[];
+  if(!iP.length&&!iF.length&&!iT.length){showToast('Sin datos válidos','error');return}
+  if(replace){data.projects=iP;data.folders=iF;data.tasks=iT;activeProjectId=iP.length?iP[0].id:null;isOverview=false;showToast(`Importado: ${iP.length} proyectos`)}
+  else{
+    const eP=new Set(data.projects.map(x=>x.id)),eF=new Set(data.folders.map(x=>x.id)),eT=new Set(data.tasks.map(x=>x.id));
+    const aP=iP.filter(x=>!eP.has(x.id)),aF=iF.filter(x=>!eF.has(x.id)),aT=iT.filter(x=>!eT.has(x.id));
+    data.projects=[...data.projects,...aP];data.folders=[...data.folders,...aF];data.tasks=[...data.tasks,...aT];
+    showToast(`Fusionado: +${aP.length} proyectos, +${aT.length} tareas`);
+  }
+  migrateData();saveData();closeModal('import');renderSidebar();
+  if(activeProjectId)renderGantt();else{isOverview=true;renderOverview()}
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+loadData();
+renderColorPicker();
+renderSidebar();
+if(data.projects.length>0)selectProject(data.projects[0].id);
+</script>
+</body>
+</html>
