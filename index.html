@@ -69,11 +69,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 .gantt-wrapper{flex:1;display:flex;overflow:hidden}
 
 /* TASK PANEL */
-.task-panel{width:var(--sidebar-w);flex-shrink:0;border-right:2px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.task-panel{width:var(--sidebar-w);flex-shrink:0;border-right:2px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .22s cubic-bezier(.4,0,.2,1),min-width .22s}
+.task-panel.collapsed{width:0!important;min-width:0;border-right:none;overflow:hidden}
+.panel-toggle-btn{position:absolute;top:50%;transform:translateY(-50%);left:0;width:18px;height:48px;background:var(--surface3);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);z-index:50;transition:left .22s cubic-bezier(.4,0,.2,1),background .15s}
+.panel-toggle-btn:hover{background:var(--surface2);color:var(--accent)}
+.panel-toggle-btn svg{transition:transform .22s}
+.panel-toggle-btn.collapsed svg{transform:rotate(180deg)}
+.gantt-chart-wrap{position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden}
 .task-panel-header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
 .col-name{flex:1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase}
 .col-status{width:82px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;text-align:center}
-.task-list-body{flex:1;overflow-y:auto;position:relative}
+.task-list-body{flex:1;overflow-y:auto;position:relative;overflow-x:hidden}
 .task-list-body::-webkit-scrollbar{width:4px}
 .task-list-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
@@ -149,10 +155,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 .day-cell .dn{font-size:11px;font-weight:600;color:var(--text3)}
 .day-cell .dw{font-size:9px;color:var(--text3);opacity:.7}
 .day-cell.today .dn{color:var(--accent)}
-.day-cell.weekend .dn{opacity:.4}
+.day-cell.weekend{background:rgba(30,20,60,.4)}
+.day-cell.weekend .dn{opacity:.55;color:var(--accent2)}
+.day-cell.weekend .dw{opacity:.55;color:var(--accent2)}
 
 /* GANTT BODY */
-.gantt-body{flex:1;overflow-y:auto;position:relative}
+.gantt-body{flex:1;overflow-y:hidden;position:relative}
 .gantt-body::-webkit-scrollbar{width:0}
 .gantt-row-folder,.gantt-row-task,.gantt-row-projhdr,.gantt-row-inline{position:absolute;left:0;right:0}
 .gantt-row-folder{height:var(--row-h);background:var(--surface);border-bottom:1px solid var(--border)}
@@ -160,7 +168,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);hei
 .gantt-row-inline{height:var(--row-h);border-bottom:1px solid rgba(42,51,73,.45);background:rgba(79,142,247,.04)}
 .gantt-row-projhdr{height:44px;border-bottom:1px solid var(--border)}
 .gantt-grid-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(42,51,73,.4);pointer-events:none}
-.gantt-grid-line.weekend{background:rgba(42,51,73,.65)}
+.gantt-grid-line.weekend{background:rgba(42,51,73,.5)}
+/* weekend column tinted background */
+.gantt-weekend-bg{position:absolute;top:0;bottom:0;background:rgba(30,20,60,.45);pointer-events:none;z-index:0}
 .today-line{position:absolute;top:0;width:2px;background:var(--accent);opacity:.6;z-index:4;pointer-events:none}
 
 /* TASK BARS */
@@ -541,7 +551,13 @@ function buildDateHeaderHTML(days,totalW){
   </div>`;
 }
 function buildGridLines(days){
-  return days.map((d,di)=>{const isW=d.getDay()===0||d.getDay()===6;return`<div class="gantt-grid-line${isW?' weekend':''}" style="left:${di*dayWidth}px"></div>`}).join('');
+  return days.map((d,di)=>{
+    const isW=d.getDay()===0||d.getDay()===6;
+    const isT=diffDays(today,d)===0;
+    const bg=isW?`<div class="gantt-weekend-bg" style="left:${di*dayWidth}px;width:${dayWidth}px"></div>`:'';
+    const todayBg=isT?`<div style="position:absolute;top:0;bottom:0;left:${di*dayWidth}px;width:${dayWidth}px;background:rgba(79,142,247,.06);pointer-events:none;z-index:0"></div>`:'';
+    return bg+todayBg+`<div class="gantt-grid-line${isW?' weekend':''}" style="left:${di*dayWidth}px;z-index:1"></div>`;
+  }).join('');
 }
 function todayLineHTML(start,totalDays,h){
   const off=diffDays(start,today);
@@ -582,22 +598,27 @@ function renderGantt(){
       </div>
     </div>
     <div class="gantt-wrapper" id="gantt-wrapper">
-      <div class="task-panel">
+      <div class="task-panel" id="task-list-panel">
         <div class="task-panel-header"><span class="col-name">NOMBRE</span><span class="col-status">ESTADO</span></div>
-        <div class="task-list-body scroll-sync" id="task-list-body">
+        <div class="task-list-body" id="task-list-body">
           ${rows.length===0
             ?`<div class="empty-state" style="height:200px"><p>Crea una carpeta y añade tareas con el botón +</p></div>`
             :rows.map(r=>renderListRow(r,proj,SC,SL)).join('')}
         </div>
       </div>
+      <div class="gantt-chart-wrap" id="gantt-chart-wrap">
+        <button class="panel-toggle-btn" id="panel-toggle-btn" onclick="toggleTaskPanel()" title="Mostrar/ocultar lista">
+          <svg viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.8" width="8" height="14"><path d="M6 1L1 7l5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       <div class="gantt-chart" id="gantt-chart">
         <div class="gantt-inner" style="width:${totalW}px">
           ${buildDateHeaderHTML(days,totalW)}
-          <div class="gantt-body scroll-sync" id="gantt-body" style="min-height:${totalH}px">
+          <div class="gantt-body" id="gantt-body" style="min-height:${totalH}px">
             ${todayLineHTML(start,totalDays,totalH)}
             ${rows.map((r,ri)=>renderGanttRow(r,ri,days,start,totalW)).join('')}
           </div>
         </div>
+      </div>
       </div>
     </div>`;
   afterRender(start);
@@ -634,9 +655,9 @@ function renderOverview(){
       <div class="content-actions">${data.projects.map(p=>`<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid var(--border)" onclick="selectProject('${p.id}')"><span style="width:7px;height:7px;border-radius:50%;background:${p.color};display:inline-block"></span>${p.name}</span>`).join('')}</div>
     </div>
     <div class="gantt-wrapper" id="gantt-wrapper">
-      <div class="task-panel">
+      <div class="task-panel" id="task-list-panel">
         <div class="task-panel-header"><span class="col-name">NOMBRE</span><span class="col-status">ESTADO</span></div>
-        <div class="task-list-body scroll-sync" id="task-list-body">
+        <div class="task-list-body" id="task-list-body">
           ${rows.map(r=>{
             if(r.type==='projhdr'){
               const p=r.data;const isC=collapsedFolders.has('proj_'+p.id);const pc=data.tasks.filter(t=>t.projectId===p.id).length;
@@ -653,10 +674,14 @@ function renderOverview(){
           }).join('')}
         </div>
       </div>
+      <div class="gantt-chart-wrap" id="gantt-chart-wrap">
+        <button class="panel-toggle-btn" id="panel-toggle-btn" onclick="toggleTaskPanel()" title="Mostrar/ocultar lista">
+          <svg viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.8" width="8" height="14"><path d="M6 1L1 7l5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       <div class="gantt-chart" id="gantt-chart">
         <div class="gantt-inner" style="width:${totalW}px">
           ${buildDateHeaderHTML(days,totalW)}
-          <div class="gantt-body scroll-sync" id="gantt-body" style="min-height:${rows.length*40}px">
+          <div class="gantt-body" id="gantt-body" style="min-height:${rows.length*40}px">
             ${todayLineHTML(start,totalDays,rows.length*40)}
             ${rows.map((r,ri)=>{
               if(r.type==='projhdr'){
@@ -671,6 +696,7 @@ function renderOverview(){
             }).join('')}
           </div>
         </div>
+      </div>
       </div>
     </div>`;
   afterRender(start);
@@ -777,9 +803,21 @@ function afterRender(start){
   const lb=document.getElementById('task-list-body');
   const gb=document.getElementById('gantt-body');
   if(lb&&gb){
-    let s=false;
-    lb.addEventListener('scroll',()=>{if(s)return;s=true;gb.scrollTop=lb.scrollTop;s=false});
-    gb.addEventListener('scroll',()=>{if(s)return;s=true;lb.scrollTop=gb.scrollTop;s=false});
+    // task-list-body is the master scroller; gantt-body mirrors it (overflow-y:hidden)
+    lb.addEventListener('scroll',()=>{ gb.scrollTop=lb.scrollTop; });
+    // redirect wheel/touch on the gantt side to the master scroller
+    gb.addEventListener('wheel',(e)=>{
+      e.preventDefault();
+      lb.scrollTop+=e.deltaY;
+    },{passive:false});
+    // touch support
+    let _ty=0;
+    gb.addEventListener('touchstart',(e)=>{_ty=e.touches[0].clientY},{passive:true});
+    gb.addEventListener('touchmove',(e)=>{
+      e.preventDefault();
+      lb.scrollTop-=(e.touches[0].clientY-_ty);
+      _ty=e.touches[0].clientY;
+    },{passive:false});
   }
   setTimeout(()=>{
     const chart=document.getElementById('gantt-chart');
@@ -1004,6 +1042,15 @@ function onVDragUp(e){
 // ═══════════════════════════════════════════════════
 //  TOGGLE
 // ═══════════════════════════════════════════════════
+function toggleTaskPanel(){
+  const panel=document.getElementById('task-list-panel');
+  const btn=document.getElementById('panel-toggle-btn');
+  if(!panel||!btn)return;
+  const isCollapsed=panel.classList.contains('collapsed');
+  panel.classList.toggle('collapsed');
+  btn.classList.toggle('collapsed');
+  btn.title=isCollapsed?'Ocultar lista':'Mostrar lista';
+}
 function toggleFolder(id){collapsedFolders.has(id)?collapsedFolders.delete(id):collapsedFolders.add(id);if(isOverview)renderOverview();else renderGantt()}
 function toggleLoose(projectId){const k='__loose_'+projectId;collapsedFolders.has(k)?collapsedFolders.delete(k):collapsedFolders.add(k);if(isOverview)renderOverview();else renderGantt()}
 function toggleTask(id){collapsedTasks.has(id)?collapsedTasks.delete(id):collapsedTasks.add(id);if(isOverview)renderOverview();else renderGantt()}
